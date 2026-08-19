@@ -12,6 +12,7 @@ import { IntegrationsController } from '@gitroom/backend/api/routes/integrations
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { SettingsController } from '@gitroom/backend/api/routes/settings.controller';
 import { PostsController } from '@gitroom/backend/api/routes/posts.controller';
+import { ContentValidationService } from '@gitroom/nestjs-libraries/validation/content.validation.service';
 import { MediaController } from '@gitroom/backend/api/routes/media.controller';
 import { UploadModule } from '@gitroom/nestjs-libraries/upload/upload.module';
 import { BillingController } from '@gitroom/backend/api/routes/billing.controller';
@@ -86,6 +87,7 @@ const authenticatedController = [
       ],
   providers: [
     AuthService,
+    ContentValidationService,
     StripeService,
     OpenaiService,
     ExtractContentService,

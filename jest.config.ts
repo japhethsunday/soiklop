@@ -61,10 +61,7 @@ const config: Config = {
       testEnvironment: 'jsdom',
       rootDir: __dirname,
       testMatch: ['<rootDir>/apps/frontend/**/*.spec.tsx'],
-      moduleNameMapper: {
-        ...tsconfigPaths,
-        '\\.(css|scss|sass)$': '<rootDir>/jest.style.mock.js',
-      },
+      moduleNameMapper: tsconfigPaths,
       transform: tsJest,
       setupFilesAfterEnv: ['<rootDir>/jest.setup.web.ts'],
     },

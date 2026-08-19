@@ -29,6 +29,8 @@ import {
   Sections,
 } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 import { PostValidationException } from '@gitroom/backend/api/routes/posts.validation.exception';
+import { ContentValidationService } from '@gitroom/nestjs-libraries/validation/content.validation.service';
+import { ValidateContentDto } from '@gitroom/nestjs-libraries/dtos/posts/validate.content.dto';
 
 @ApiTags('Posts')
 @Controller('/posts')
@@ -36,8 +38,25 @@ export class PostsController {
   constructor(
     private _postsService: PostsService,
     private _agentGraphService: AgentGraphService,
-    private _shortLinkService: ShortLinkService
+    private _shortLinkService: ShortLinkService,
+    private _contentValidationService: ContentValidationService
   ) {}
+
+  /**
+   * Pre-flight check for a draft against its target platforms.
+   *
+   * Read-only and side-effect free: it neither stores nor publishes anything,
+   * so the composer can call it on every keystroke and an agent can call it
+   * before proposing a schedule. Each platform is judged independently, and an
+   * unrecognised platform is reported as an error rather than passing.
+   */
+  @Post('/validate')
+  async validateContent(@Body() body: ValidateContentDto) {
+    return this._contentValidationService.validate(
+      { text: body.text, media: body.media },
+      body.platforms
+    );
+  }
 
   @Get('/:id/statistics')
   async getStatistics(

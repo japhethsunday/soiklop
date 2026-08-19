@@ -108,13 +108,63 @@ services.
 The existing `OpenAiService` is untouched and keeps serving current features.
 Migrating its call sites onto this seam is follow-up work.
 
+### 5. Pre-flight validation endpoint — compiles, not integration-tested
+
+`POST /posts/validate` exposes the validator as a real API surface. It is
+read-only and side-effect free — it neither stores nor publishes — so the
+composer can call it while typing and an agent can call it before proposing a
+schedule. Input is bounded by a class-validator DTO (max text length, max
+platforms, max attachments, non-negative sizes) so a caller cannot force
+unbounded work in the validator.
+
+**Verified:** compiles into the production backend build; the underlying
+service has 29 unit tests.
+
+**Not verified:** no HTTP-level integration test. See the blocker below.
+
+## Known blocker: NestJS controller integration tests
+
+Controller-level integration tests (booting a Nest app and driving it with
+supertest) **cannot currently run** in this environment. The cause is a
+transitive import chain, not the test code:
+
+```
+posts.controller → posts.service → create.post.dto
+  → helpers/sanitize.post.content → isomorphic-dompurify
+    → a bundled jsdom stack (ESM-only, with nested node_modules)
+      → undici (ESM) and canvas (native addon)
+```
+
+Jest's CJS runtime cannot parse that ESM chain, and `canvas` has no prebuilt
+binary for Node 22 and no system cairo/pango available here to compile against.
+
+Three fixes were attempted and each was reverted rather than left in place:
+widening `transformIgnorePatterns` (moves the failure deeper into the chain),
+running the spec under jsdom (fails on the `canvas` native addon), and mapping
+the leaf modules to stubs (jsdom requires them internally, below
+`moduleNameMapper`). A test propped up by that much stubbing would assert
+little, so no integration test was committed rather than committing a hollow
+one.
+
+**To unblock, pick one:**
+
+1. Install cairo/pango system packages so `canvas` compiles
+   (`apt-get install libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev`),
+   then run tests under jsdom. Lowest-risk.
+2. Move `sanitizePostContent` out of the DTO module so importing a controller
+   does not drag in a DOM implementation. Better architecture, but touches
+   working upstream code and needs its own regression pass.
+3. Run integration tests under Vitest, which handles ESM natively. The repo
+   already depends on Vitest for the extension app.
+
 ## Verification performed
 
 | Check | Result |
 |---|---|
 | `pnpm install --frozen-lockfile` | Passes |
 | `pnpm run build:backend` | Passes |
-| `npx jest` (88 tests) | Passes |
+| `npx jest` (76 tests) | Passes |
+| `pnpm run build` (backend + frontend + orchestrator) | Passes |
 | Secret scan, tracked tree | Clean (one false positive: a Hashnode tag slug) |
 | Secret scan, git history | N/A — history is a single squashed import, scanned as tree |
 | `.env` ignored, only `.env.example` tracked | Confirmed |
@@ -138,9 +188,11 @@ listed so the gap is explicit rather than implied by silence.
 - **Capability enforcement at the API boundary:** the capability model is a
   tested library; it is not yet wired into a NestJS guard, so controllers still
   use the original authorization.
-- **Validator wiring:** the validation service is not yet called from the
-  composer, the posts controller, or the publishing workflow.
+- **Validator wiring:** the validation service is exposed at
+  `POST /posts/validate`, but is not yet called from the composer UI, the
+  create/update post paths, or the publishing workflow.
 - **Frontend work:** no UI was added or modified.
+- **Integration tests:** blocked, see above.
 - **End-to-end and browser testing:** none performed. No database, Redis or
   Temporal instance was available in this environment, so integration and E2E
   flows (sign in → connect account → publish → analytics) were not exercised.
