@@ -1,5 +1,7 @@
 'use client';
 
+import { LOGO_URL } from '@gitroom/helpers/utils/brand.assets';
+
 /**
  * Application logo.
  *
@@ -11,7 +13,7 @@
 export const Logo = () => {
   return (
     <img
-      src="/logo.svg"
+      src={LOGO_URL}
       alt=""
       width={60}
       height={60}

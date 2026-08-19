@@ -1,3 +1,4 @@
+import { FAVICON_URL } from '@gitroom/helpers/utils/brand.assets';
 import { MantineWrapper } from '@gitroom/react/helpers/mantine.wrapper';
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +22,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   return (
     <html>
       <head>
-        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="icon" href={FAVICON_URL} sizes="any" />
       </head>
       <body
         className={clsx(jakartaSans.className, 'dark text-primary !bg-primary')}

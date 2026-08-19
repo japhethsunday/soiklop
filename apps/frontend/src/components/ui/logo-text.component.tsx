@@ -1,5 +1,6 @@
 import React from 'react';
 import { getAppName } from '@gitroom/helpers/utils/app.name';
+import { LOGO_URL } from '@gitroom/helpers/utils/brand.assets';
 
 /**
  * Wordmark: the brand mark next to the product name.
@@ -16,7 +17,7 @@ import { getAppName } from '@gitroom/helpers/utils/app.name';
 export const LogoTextComponent = () => {
   return (
     <div className="flex items-center gap-[10px]">
-      <img src="/logo.svg" alt="" width={33} height={33} />
+      <img src={LOGO_URL} alt="" width={33} height={33} />
       <span className="text-[22px] font-[600] tracking-[-0.5px] text-current">
         {getAppName()}
       </span>
