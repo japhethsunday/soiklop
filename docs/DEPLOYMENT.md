@@ -36,6 +36,41 @@ The frontend, by contrast, is an ordinary Next.js app and belongs on Vercel.
 | Supabase project ref | `bevoflswidqbuxfehzpi` (region `eu-west-1`) |
 | Supabase API URL | https://bevoflswidqbuxfehzpi.supabase.co |
 
+## Same-origin API proxy (do not remove)
+
+The frontend calls the backend at `/api/*` on its own origin, and
+`next.config.js` rewrites that to the Railway backend under `beforeFiles`.
+Three things make this necessary, and each one broke login on its own:
+
+1. **Cookie domain.** `getCookieUrlFromDomain` resolves the cookie `Domain`
+   from `FRONTEND_URL`. A backend on `railway.app` cannot set a cookie for a
+   `vercel.app` host at all, so the auth cookie was dropped silently. Serving
+   the API from the frontend's own origin removes the cross-site hop.
+2. **Public suffix.** `vercel.app` is a public-suffix entry, and browsers
+   refuse cookies scoped to one. `libraries/helpers/src/subdomain/subdomain.management.ts`
+   now parses with `allowPrivateDomains`, yielding `.soiklop-japheth-sunday.vercel.app`.
+   Ordinary domains are unchanged.
+3. **Middleware matcher.** `apps/frontend/src/proxy.ts` matches
+   `/((?!api/|_next/|_static/|_vercel|[\w-]+\.\w+).*)`. Any prefix other than
+   `api/` is intercepted by the auth middleware and redirected to `/auth`, so
+   the proxy must live under `/api`.
+
+Rewrites declared in `vercel.json` do **not** apply to a Next.js app's own
+routing — they must be in `next.config.js`. `vercel.json` only supplies
+`BACKEND_PROXY_URL` and `NEXT_PUBLIC_BACKEND_URL` at build time.
+
+## Temporal is absent by design here
+
+`TemporalRegister.onModuleInit` no longer aborts startup when Temporal is
+unreachable; it logs and continues. Without a Temporal service the API,
+authentication, dashboard and analytics all work, but **scheduling and
+publishing will fail** — loudly, at the point of use, never silently.
+
+Railway rejected a fifth service with "Free plan resource provision limit
+exceeded". To enable publishing, raise the plan and add a
+`temporalio/auto-setup:1.28.1` service pointed at `temporal-postgres`, or use
+Temporal Cloud and set `TEMPORAL_ADDRESS`.
+
 ## Vercel framework preset (do not remove)
 
 `apps/frontend/vercel.json` pins `"framework": "nextjs"`. This is load-bearing.
@@ -140,8 +175,30 @@ are supplied.
 | Vercel frontend production build | Pass — deployed, READY |
 | Vercel frontend actually serving | Pass — `/` and `/auth/login` both return HTTP 200 and render |
 | Railway redis, temporal-postgres | Running |
-| Railway backend / orchestrator | **CRASHED** — `MASTRA_STORAGE_PG_INITIALIZATION_FAILED`, the Mastra Postgres store cannot start without `DATABASE_URL`. The build itself succeeded. |
-| End-to-end publish flow | **Not verified** — blocked on Temporal and `DATABASE_URL` |
+| Railway backend | Running — "Backend started successfully on port 3000" |
+| Railway orchestrator | Running |
+| API through the same-origin proxy | Pass — `GET /api/auth/can-register` returns HTTP 200 `{"register":true}` |
+| Frontend points at the proxy | Pass — bundle contains `backendUrl:"https://soiklop-japheth-sunday.vercel.app/api"` |
+| Login POST round trip | **Not verified from here** — the sandbox cannot issue POSTs to the deployment; needs a real browser sign-in |
+| End-to-end publish flow | **Not verified** — blocked on Temporal (see above) |
 
-Sign-in will not work until the backend is up: the login page renders from
-Vercel, but it posts to the Railway backend, which is currently down.
+### Database connection
+
+Use the **transaction** pooler on port 6543. Session mode (5432) caps the
+project at 15 client connections, and the backend and orchestrator each open a
+Prisma pool plus Mastra's own pool, which exhausts it and produces
+`EMAXCONNSESSION`.
+
+The application connects as the `soiklop_app` role, not `postgres`. It owns
+every object in `public` because Mastra and Prisma both ALTER their own tables
+at startup, and it holds `BYPASSRLS` because the deny-all RLS exists to block
+the PostgREST roles, not the application.
+
+### Railway operational notes
+
+- The Railway GitHub App is **not installed** on the repository, so auto-deploy
+  is off. Pushes do not build; deployments must be triggered against an
+  explicit commit SHA, and plain "redeploy" reuses the previous snapshot rather
+  than picking up new commits.
+- Do not set `NODE_OPTIONS` below ~2 GB. It applies to the build as well as the
+  runtime, and `nest build` runs out of heap under it.
