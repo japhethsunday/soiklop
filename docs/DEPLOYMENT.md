@@ -155,6 +155,48 @@ Social platform OAuth credentials and AI provider keys are documented in
 `.env.example`. Every platform integration stays inert until its credentials
 are supplied.
 
+## Connecting social channels
+
+**No channel can connect until its credentials are configured.** This is not a
+bug: every platform requires you to register a developer application and issue
+your own OAuth keys. Nothing is currently set, which is why every channel
+fails.
+
+Set these on the **backend** service in Railway.
+
+| Platform | Variables |
+|---|---|
+| Bluesky | *(none — see below)* |
+| X | `X_API_KEY`, `X_API_SECRET` |
+| LinkedIn | `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET` |
+| Facebook / Instagram | `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET` |
+| Threads | `THREADS_APP_ID`, `THREADS_APP_SECRET` |
+| TikTok | `TIKTOK_CLIENT_ID`, `TIKTOK_CLIENT_SECRET` |
+| YouTube | `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET` |
+| Pinterest | `PINTEREST_CLIENT_ID`, `PINTEREST_CLIENT_SECRET` |
+| Discord | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN_ID` |
+| Telegram | `TELEGRAM_TOKEN` |
+| Mastodon | `MASTODON_URL`, `MASTODON_CLIENT_ID`, `MASTODON_CLIENT_SECRET` |
+
+### Redirect URI
+
+Every OAuth app must register this callback, substituting the provider's
+identifier (`x`, `linkedin`, `facebook`, …):
+
+```
+https://soiklop.vercel.app/integrations/social/<provider>
+```
+
+It is built from `FRONTEND_URL`, so it must match that value exactly. If
+`FRONTEND_URL` changes, every registered redirect URI has to change with it.
+
+### Bluesky needs no developer app
+
+Bluesky authenticates with a handle and an
+[app password](https://bsky.app/settings/app-passwords) entered directly in the
+UI, so it is the one channel that works with no configuration at all. It is the
+quickest way to verify the connect flow end to end.
+
 ## Known blockers
 
 1. **Temporal server is not provisioned.** Railway's free plan caps the project
