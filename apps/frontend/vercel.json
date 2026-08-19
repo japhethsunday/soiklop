@@ -1,9 +1,15 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
+  "rewrites": [
+    {
+      "source": "/backend/:path*",
+      "destination": "https://backend-production-28cf.up.railway.app/:path*"
+    }
+  ],
   "build": {
     "env": {
-      "NEXT_PUBLIC_BACKEND_URL": "https://backend-production-28cf.up.railway.app"
+      "NEXT_PUBLIC_BACKEND_URL": "https://soiklop-japheth-sunday.vercel.app/backend"
     }
   }
 }
