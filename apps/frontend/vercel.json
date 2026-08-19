@@ -4,7 +4,12 @@
   "build": {
     "env": {
       "BACKEND_PROXY_URL": "https://backend-production-28cf.up.railway.app",
-      "NEXT_PUBLIC_BACKEND_URL": "https://soiklop-japheth-sunday.vercel.app/api"
+      "NEXT_PUBLIC_BACKEND_URL": "https://soiklop-japheth-sunday.vercel.app/api",
+      "BACKEND_INTERNAL_URL": "https://backend-production-28cf.up.railway.app",
+      "FRONTEND_URL": "https://soiklop-japheth-sunday.vercel.app",
+      "STORAGE_PROVIDER": "local",
+      "IS_GENERAL": "true",
+      "NEXT_PUBLIC_APP_NAME": "Soiklop"
     }
   }
 }

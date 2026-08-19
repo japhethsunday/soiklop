@@ -25,7 +25,11 @@ export const getUppyUploadPlugin = (
   backendUrl: string,
   transloadit: string[] = []
 ) => {
-  switch (provider) {
+  // An unset STORAGE_PROVIDER used to fall through to the `default` branch and
+  // throw "Unsupported storage provider: undefined" while the uploader hook was
+  // being constructed, which took the whole media page down. Local storage is
+  // the correct fallback and matches the backend's own default.
+  switch (provider || 'local') {
     case 'transloadit':
       return {
         plugin: Transloadit,

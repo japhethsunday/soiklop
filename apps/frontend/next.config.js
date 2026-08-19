@@ -3,6 +3,20 @@ import { withSentryConfig } from '@sentry/nextjs';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Vercel supplies these at build time (see vercel.json). Next inlines them
+  // here so server components and middleware see them at request time too --
+  // without this, STORAGE_PROVIDER was undefined in the deployed frontend and
+  // the media page crashed with "Unsupported storage provider: undefined",
+  // while FRONTEND_URL was undefined when computing the logout cookie domain.
+  env: {
+    STORAGE_PROVIDER: process.env.STORAGE_PROVIDER || 'local',
+    FRONTEND_URL: process.env.FRONTEND_URL || '',
+    BACKEND_INTERNAL_URL: process.env.BACKEND_INTERNAL_URL || '',
+    IS_GENERAL: process.env.IS_GENERAL || 'true',
+    NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME || 'Soiklop',
+    NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY:
+      process.env.NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY || '',
+  },
   experimental: {
     proxyTimeout: 90_000,
   },
