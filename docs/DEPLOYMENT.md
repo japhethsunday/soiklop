@@ -31,10 +31,25 @@ The frontend, by contrast, is an ordinary Next.js app and belongs on Vercel.
 
 | Resource | Value |
 |---|---|
-| Frontend | https://soiklop.vercel.app |
+| Frontend | https://soiklop-japheth-sunday.vercel.app |
 | Backend API | https://backend-production-28cf.up.railway.app |
 | Supabase project ref | `bevoflswidqbuxfehzpi` (region `eu-west-1`) |
 | Supabase API URL | https://bevoflswidqbuxfehzpi.supabase.co |
+
+## Vercel framework preset (do not remove)
+
+`apps/frontend/vercel.json` pins `"framework": "nextjs"`. This is load-bearing.
+
+Vercel did **not** auto-detect the framework for this project. Without the
+preset it ran a generic `pnpm run build` and then looked for a static output
+directory; `next build` writes to `apps/frontend/.next`, which was never
+served. The build reported success while serving nothing, so every route
+returned a platform-level 404 — a failure mode that looks like a broken app
+rather than a broken deploy config.
+
+Symptoms if this regresses: `x-vercel-error: NOT_FOUND` on every path
+including `/`, an 84-byte plain-text body, and no `lambdaRuntimeStats` on the
+deployment.
 
 ## Database
 
@@ -123,6 +138,10 @@ are supplied.
 | Supabase schema applied and verified against catalog | Pass |
 | Supabase security advisor, ERROR level | 0 findings |
 | Vercel frontend production build | Pass — deployed, READY |
-| Railway redis | Running |
-| Railway backend / orchestrator | Build triggered; **not yet verified running** |
+| Vercel frontend actually serving | Pass — `/` and `/auth/login` both return HTTP 200 and render |
+| Railway redis, temporal-postgres | Running |
+| Railway backend / orchestrator | **CRASHED** — `MASTRA_STORAGE_PG_INITIALIZATION_FAILED`, the Mastra Postgres store cannot start without `DATABASE_URL`. The build itself succeeded. |
 | End-to-end publish flow | **Not verified** — blocked on Temporal and `DATABASE_URL` |
+
+Sign-in will not work until the backend is up: the login page renders from
+Vercel, but it posts to the Railway backend, which is currently down.
