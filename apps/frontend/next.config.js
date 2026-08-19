@@ -45,15 +45,30 @@ const nextConfig = {
     ];
   },
   async rewrites() {
-    return [
-      {
-        source: '/uploads/:path*',
-        destination:
-          process.env.STORAGE_PROVIDER === 'local'
-            ? '/api/uploads/:path*'
-            : '/404',
-      },
-    ];
+    // `beforeFiles` so the backend proxy wins before Next.js tries to match a
+    // page and 404s. Rewrites declared in vercel.json do not apply to a
+    // Next.js app's own routing, so the proxy has to live here.
+    return {
+      beforeFiles: [
+        ...(process.env.BACKEND_PROXY_URL
+          ? [
+              {
+                source: '/api/:path*',
+                destination: `${process.env.BACKEND_PROXY_URL}/:path*`,
+              },
+            ]
+          : []),
+      ],
+      afterFiles: [
+        {
+          source: '/uploads/:path*',
+          destination:
+            process.env.STORAGE_PROVIDER === 'local'
+              ? '/api/uploads/:path*'
+              : '/404',
+        },
+      ],
+    };
   },
 };
 
