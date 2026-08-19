@@ -1,10 +1,10 @@
 export const dynamic = 'force-dynamic';
 import { Metadata } from 'next';
 import { AfterActivate } from '@gitroom/frontend/components/auth/after.activate';
-import { isGeneralServerSide } from '@gitroom/helpers/utils/is.general.server.side';
+import { getAppName } from '@gitroom/helpers/utils/app.name';
 export const metadata: Metadata = {
   title: `${
-    isGeneralServerSide() ? 'Postiz' : 'Gitroom'
+    getAppName()
   } - Activate your account`,
   description: '',
 };

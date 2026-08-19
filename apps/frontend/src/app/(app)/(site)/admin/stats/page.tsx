@@ -1,10 +1,10 @@
 export const dynamic = 'force-dynamic';
 import { AdminStatsComponent } from '@gitroom/frontend/components/admin/admin-stats.component';
 import { Metadata } from 'next';
-import { isGeneralServerSide } from '@gitroom/helpers/utils/is.general.server.side';
+import { getAppName } from '@gitroom/helpers/utils/app.name';
 
 export const metadata: Metadata = {
-  title: `${isGeneralServerSide() ? 'Postiz' : 'Gitroom'} Admin Stats`,
+  title: `${getAppName()} Admin Stats`,
   description: '',
 };
 

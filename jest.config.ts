@@ -64,6 +64,10 @@ const config: Config = {
       moduleNameMapper: tsconfigPaths,
       transform: tsJest,
       setupFilesAfterEnv: ['<rootDir>/jest.setup.web.ts'],
+      // Several frontend dependencies (@uppy/*, nanoid, and friends) ship ESM
+      // only. Next.js transpiles them at build time; Jest's CJS runtime needs
+      // them routed through the transform explicitly.
+      transformIgnorePatterns: ['node_modules/(?!(@uppy|nanoid|@transloadit)/)'],
     },
   ],
   coverageDirectory: '<rootDir>/coverage',

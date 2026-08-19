@@ -1,141 +1,156 @@
-<p align="center">
-  <a href="https://postiz.com/" target="_blank">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/765e9d72-3ee7-4a56-9d59-a2c9befe2311">
-    <img alt="Postiz Logo" src="https://github.com/user-attachments/assets/f0d30d70-dddb-4142-8876-e9aa6ed1cb99" width="280"/>
-  </picture>
-  </a>
-</p>
+# Soiklop
 
-<p align="center">
-<a href="https://opensource.org/license/agpl-v3">
-  <img src="https://img.shields.io/badge/License-AGPL%203.0-blue.svg" alt="License">
-</a>
-</p>
+A social media operations platform: connect multiple accounts, create and adapt
+content with AI, schedule and publish across platforms, and track performance
+from one dashboard.
 
-<h3 align="center"><strong><a href="https://github.com/gitroomhq/postiz-agent">NEW: check out Postiz agent CLI! perfect for OpenClaw and other agents</a></strong></h3>
-<div align="center">
-  <strong>
-  <h2>Your ultimate AI social media scheduling tool</h2><br />
-  <a href="https://postiz.com">Postiz</a>: An alternative to: Buffer.com, Hypefury, Twitter Hunter, etc...<br /><br />
-  </strong>
-  Postiz offers everything you need to manage your social media posts,<br />build an audience, capture leads, and grow your business.
-</div>
+Soiklop is built on [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0)
+and extends it. See [Relationship to Postiz](#relationship-to-postiz) for what
+that means for licensing.
 
-<div class="flex" align="center">
-  <br />
-  <img alt="Instagram" src="https://postiz.com/svgs/socials/Instagram.svg" width="32">
-  <img alt="Youtube" src="https://postiz.com/svgs/socials/Youtube.svg" width="32">
-  <img alt="Dribbble" src="https://postiz.com/svgs/socials/Dribbble.svg" width="32">
-  <img alt="Linkedin" src="https://postiz.com/svgs/socials/Linkedin.svg" width="32">
-  <img alt="Reddit" src="https://postiz.com/svgs/socials/Reddit.svg" width="32">
-  <img alt="TikTok" src="https://postiz.com/svgs/socials/TikTok.svg" width="32">
-  <img alt="Facebook" src="https://postiz.com/svgs/socials/Facebook.svg" width="32">
-  <img alt="Pinterest" src="https://postiz.com/svgs/socials/Pinterest.svg" width="32">
-  <img alt="Threads" src="https://postiz.com/svgs/socials/Threads.svg" width="32">
-  <img alt="X" src="https://postiz.com/svgs/socials/X.svg" width="32">
-  <img alt="Slack" src="https://postiz.com/svgs/socials/Slack.svg" width="32">
-  <img alt="Discord" src="https://postiz.com/svgs/socials/Discord.svg" width="32">
-  <img alt="Mastodon" src="https://postiz.com/svgs/socials/Mastodon.svg" width="32">
-  <img alt="Bluesky" src="https://postiz.com/svgs/socials/Bluesky.svg" width="32">
-</div>
+## Status
 
-<p align="center">
-  <br />
-  <a href="https://docs.postiz.com" rel="dofollow"><strong>Explore the docs »</strong></a>
-  <br />
+The platform is deployed and in use. What works today, and what does not:
 
-  <br />
-  <a href="https://youtube.com/@postizofficial" rel="dofollow"><strong>Watch the YouTube Tutorials»</strong></a>
-  <br />
-</p>
+| Area | State |
+|---|---|
+| Registration, login, sessions | Working |
+| Dashboard, calendar, drafts | Working |
+| Media library | Working |
+| Social account connection (OAuth) | Working once platform credentials are configured |
+| REST API and MCP surface | Working |
+| Analytics views | Working |
+| **Scheduled publishing** | **Requires a Temporal server — see [Publishing](#publishing)** |
+| AI generation | Requires an AI provider key |
 
-<p align="center">
-  <a href="https://platform.postiz.com">Register</a>
-  ·
-  <a href="https://discord.postiz.com">Join Our Discord (devs only)</a>
-  ·
-  <a href="https://docs.postiz.com/public-api">Public API</a><br />
-</p>
-<p align="center">
-  <a href="https://www.npmjs.com/package/@postiz/node">NodeJS SDK</a>
-  ·
-  <a href="https://www.npmjs.com/package/n8n-nodes-postiz">N8N custom node</a>
-  ·
-  <a href="https://apps.make.com/postiz">Make.com integration</a>
-</p>
+## Architecture
 
-<br /><br />
+A pnpm monorepo. No single host fits the whole system, so it runs across three.
 
-## 🔌 See the leading Postiz features
+| Component | Path | Runs on | Why |
+|---|---|---|---|
+| Frontend | `apps/frontend` | Vercel | Next.js 16 + React 19 |
+| Backend API | `apps/backend` | Railway | NestJS; needs a long-running process |
+| Orchestrator | `apps/orchestrator` | Railway | Temporal worker; must stay resident |
+| Shared libraries | `libraries/*` | — | Providers, database, helpers |
+| Database | — | Supabase | PostgreSQL via Prisma |
+| Queue / cache | — | Railway | Redis |
 
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=BdsCVvEYgHU" target="_blank">
-    <img alt="Postiz" src="https://github.com/user-attachments/assets/8b9b7939-da1a-4be5-95be-42c6fce772de" />
-  </a>
-</p>
+The backend **cannot** run on a serverless platform. `apps/orchestrator` is a
+Temporal worker that executes every publish; without a resident process,
+scheduled posts sit in the queue forever while the UI reports them as
+scheduled. Full reasoning in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
-## ✨ Features
+## Quick start
 
-| ![Image 1](https://github.com/user-attachments/assets/a27ee220-beb7-4c7e-8c1b-2c44301f82ef) | ![Image 2](https://github.com/user-attachments/assets/eb5f5f15-ed90-47fc-811c-03ccba6fa8a2) |
-| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| ![Image 3](https://github.com/user-attachments/assets/d51786ee-ddd8-4ef8-8138-5192e9cfe7c3) | ![Image 4](https://github.com/user-attachments/assets/91f83c89-22f6-43d6-b7aa-d2d3378289fb) |
+Requires Node 22.x and pnpm 10.6.1.
 
-### Our Sponsors
+```bash
+pnpm install
+cp .env.example .env          # then fill in the values below
+pnpm run prisma-db-push       # create the schema
+pnpm run dev                  # frontend on :4200, backend on :3000
+```
 
-| Sponsor |                                  Logo                                   | Description     |
-|---------|:-----------------------------------------------------------------------:|-----------------|
-| [Hostinger](https://www.hostinger.com/vps/docker/postiz?ref=postiz) | <img src=".github/sponsors/hostinger.png" alt="Hostinger" width="500"/> | Hostinger is on a mission to make online success possible for anyone – from developers to aspiring bloggers and business owners |
-| [Virlo](https://dev.virlo.ai/?ref=postiz) | <img src="https://github.com/user-attachments/assets/25182598-5344-45fc-b9cd-e4cfa16aabfd" alt="Virlo" width="500"/> | Virlo is the #1 social media trend spotting and all-in-one GTM tool for teams leveraging short-form video |
-| [ChatbotX](https://chatbotx.io/?ref=postiz) | <img src="https://github.com/user-attachments/assets/0aa6b058-9a64-46d3-bc26-337abc51737d" alt="ChatbotX" width="500"/> | The ManyChat alternative that you can self-host, white-label, and resell to your clients. Bring your own OpenClaw, Hermes, or Claude agents! |
+`docker-compose.dev.yaml` provides Postgres, Redis and Temporal locally:
 
-![Bronze Tier](https://opencollective.com/postiz/tiers/main-repository-bronze-tier.svg?avatarHeight=36&width=600&button=false)
+```bash
+pnpm run dev:docker
+```
 
-# Intro
+## Configuration
 
-- Schedule all your social media posts (many AI features)
-- Measure your work with analytics.
-- Collaborate with other team members to exchange or buy posts.
-- Invite your team members to collaborate, comment, and schedule posts.
-- At the moment, there is no difference between the hosted version and the self-hosted version
-- Perfect for automation (API) with platforms like N8N, Make.com, Zapier, etc.
+Every variable is documented in `.env.example`. The minimum to boot:
 
-## Tech Stack
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `REDIS_URL` | Redis connection string |
+| `JWT_SECRET` | Session signing secret — use a long random value |
+| `FRONTEND_URL` | Public URL of the frontend |
+| `NEXT_PUBLIC_BACKEND_URL` | URL the browser uses to reach the API |
+| `BACKEND_INTERNAL_URL` | URL the frontend uses server-side |
 
-- Pnpm workspaces (Monorepo)
-- NextJS (React)
-- NestJS
-- Prisma (Default to PostgreSQL)
-- Temporal
-- Resend (email notifications)
+### Branding
 
-## Quick Start
+`NEXT_PUBLIC_APP_NAME` sets the product name shown in page titles and UI copy.
+It defaults to `Soiklop`.
 
-To have the project up and running, please follow the [Quick Start Guide](https://docs.postiz.com/quickstart)
+### AI providers
 
-## Sponsor Postiz
+The AI layer is provider-agnostic. Configure any subset; each provider with
+credentials is registered, and `AI_PROVIDER` selects the default. With none
+set, AI features report that no provider is configured rather than failing
+obscurely.
 
-We now give a few options to Sponsor Postiz:
-- Just a donation: You like what we are building, and want to buy us some coffee so we can build faster.
-- Main repository: Get your logo with a backlink from the main Postiz repository. Postiz has over 7M downloads and 20k views per month.
+| Variable | Purpose |
+|---|---|
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | Anthropic (default model `claude-opus-5`) |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` | OpenAI (default `gpt-4.1`) |
+| `AI_COMPATIBLE_API_KEY` / `AI_COMPATIBLE_BASE_URL` | Any OpenAI-compatible gateway |
+| `AI_PROVIDER` | Which of the above is the default |
 
-Link: https://opencollective.com/postiz
+### Social platforms
 
-## Postiz Compliance
+Each platform needs its own OAuth credentials (`X_API_KEY`, `LINKEDIN_CLIENT_ID`,
+`FACEBOOK_APP_ID`, …) — all listed in `.env.example`. An integration stays
+inert until its credentials are supplied. **No platform is claimed as working
+until its credentials are configured and a real post succeeds.**
 
-- Postiz is an open-source, self-hosted social media scheduling tool that supports platforms like X (formerly Twitter), Bluesky, Mastodon, Discord, and others.
-- Postiz hosted service uses official, platform-approved OAuth flows.
-- Postiz does not automate or scrape content from social media platforms.
-- Postiz does not collect, store, or proxy API keys or access tokens from users.
-- Postiz never asks users to paste API keys into our hosted product.
-- Postiz users always authenticate directly with the social platform (e.g., X, Discord, etc.), ensuring platform compliance and data privacy.
+## Publishing
+
+Publishing runs through Temporal, not an in-process timer. That means a
+publish is durable, retryable, and idempotent — a retry after an unknown
+outcome will not double-post.
+
+It requires three things: the backend, the orchestrator worker, and a Temporal
+server. If Temporal is unreachable the API still starts and logs the failure,
+so authentication and the dashboard keep working, but **scheduling and
+publishing fail loudly at the point of use**. A post is never reported as
+published unless the platform accepted it.
+
+## Testing
+
+```bash
+npx jest                        # everything
+npx jest --selectProjects node  # backend and shared libraries
+npx jest --coverage
+```
+
+Covered today: cross-platform content validation, the workspace capability
+model, and the AI provider abstraction including retry and failure handling.
+
+Controller-level integration tests currently cannot run — importing a
+controller pulls in an ESM jsdom stack and an uncompiled native addon that
+Jest's CJS runtime cannot load. The cause and three possible fixes are recorded
+in [`docs/PLATFORM_STATUS.md`](docs/PLATFORM_STATUS.md).
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Deployment topology, database setup, security lockdown, known blockers |
+| [`docs/PLATFORM_STATUS.md`](docs/PLATFORM_STATUS.md) | What is built and verified, what is not, and why |
+| `.env.example` | Every configuration variable |
+
+## Security
+
+- No secrets are committed. `.env` is ignored; only `.env.example` is tracked.
+- OAuth tokens and credentials are never exposed to the frontend.
+- On Supabase, the `public` schema is exposed to PostgREST via a publishable
+  key. Row-level security is enabled with no policies and API-role grants are
+  revoked, so that surface is closed. **Re-run the lock snippet in
+  `docs/DEPLOYMENT.md` after any migration that adds tables** — new tables
+  arrive without RLS.
+
+## Relationship to Postiz
+
+Soiklop is a derivative of Postiz and is therefore **AGPL-3.0**. If you deploy
+it as a network service, the AGPL requires you to offer the source to your
+users. Confirm this is acceptable before any commercial deployment.
+
+The original project is worth supporting: <https://github.com/gitroomhq/postiz-app>
 
 ## License
 
-This repository's source code is available under the [AGPL-3.0 license](LICENSE).
-
-<br /><br />
-
-<p align="center">
-  <img src="https://github.com/snyk-labs/secure-developer-sample-repo/raw/main/badge_full.svg" alt="Secure Developer Badge Full" width="150">
-</p>
+[AGPL-3.0](LICENSE)
