@@ -3,13 +3,13 @@
   "framework": "nextjs",
   "rewrites": [
     {
-      "source": "/backend/:path*",
+      "source": "/api/:path*",
       "destination": "https://backend-production-28cf.up.railway.app/:path*"
     }
   ],
   "build": {
     "env": {
-      "NEXT_PUBLIC_BACKEND_URL": "https://soiklop-japheth-sunday.vercel.app/backend"
+      "NEXT_PUBLIC_BACKEND_URL": "https://soiklop-japheth-sunday.vercel.app/api"
     }
   }
 }
