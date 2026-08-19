@@ -36,14 +36,35 @@ export class CopilotController {
     private _subscriptionService: SubscriptionService,
     private _mastraService: MastraService
   ) {}
+
+  private static isAiConfigured(): boolean {
+    return !!process.env.OPENAI_API_KEY;
+  }
+
+  /**
+   * Ends the request with an explicit error when no AI provider is configured.
+   *
+   * These handlers previously logged a warning and returned without writing
+   * anything to the response, leaving the HTTP request open until the browser
+   * gave up around two minutes later. The user saw the assistant hang with no
+   * explanation, and the access log recorded a 499 rather than a fault.
+   */
+  private static respondAiNotConfigured(res: Response) {
+    Logger.warn(
+      'AI request rejected: no AI provider is configured (set OPENAI_API_KEY).'
+    );
+
+    return res.status(503).json({
+      error: 'ai_not_configured',
+      message:
+        'No AI provider is configured for this instance. Set an AI provider ' +
+        'API key to enable the assistant.',
+    });
+  }
   @Post('/chat')
   chatAgent(@Req() req: Request, @Res() res: Response) {
-    if (
-      process.env.OPENAI_API_KEY === undefined ||
-      process.env.OPENAI_API_KEY === ''
-    ) {
-      Logger.warn('OpenAI API key not set, chat functionality will not work');
-      return;
+    if (!CopilotController.isAiConfigured()) {
+      return CopilotController.respondAiNotConfigured(res);
     }
 
     const copilotRuntimeHandler = copilotRuntimeNodeHttpEndpoint({
@@ -64,12 +85,8 @@ export class CopilotController {
     @Res() res: Response,
     @GetOrgFromRequest() organization: Organization
   ) {
-    if (
-      process.env.OPENAI_API_KEY === undefined ||
-      process.env.OPENAI_API_KEY === ''
-    ) {
-      Logger.warn('OpenAI API key not set, chat functionality will not work');
-      return;
+    if (!CopilotController.isAiConfigured()) {
+      return CopilotController.respondAiNotConfigured(res);
     }
     const mastra = await this._mastraService.mastra();
     const requestContext = new RequestContext<ChannelsContext>();
