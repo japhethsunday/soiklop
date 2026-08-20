@@ -1,6 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { Agent } from '@mastra/core/agent';
-import { openai } from '@ai-sdk/openai';
+import { createOpenAI } from '@ai-sdk/openai';
+import {
+  getOpenAiApiKey,
+  getOpenAiBaseUrl,
+  getOpenAiModel,
+} from '@gitroom/nestjs-libraries/ai/openai.compatible';
+
+/**
+ * Built here rather than using the package's default `openai` singleton,
+ * which is bound to OpenAI's own endpoint and so ignores a key issued by an
+ * OpenAI-compatible gateway.
+ */
+const openai = createOpenAI({
+  apiKey: getOpenAiApiKey(),
+  baseURL: getOpenAiBaseUrl(),
+});
 import { Memory } from '@mastra/memory';
 import { pStore } from '@gitroom/nestjs-libraries/chat/mastra.store';
 import { array, object, string } from 'zod';
@@ -93,7 +108,7 @@ export class LoadToolsService {
       )}
 `;
       },
-      model: openai('gpt-5.2'),
+      model: openai(getOpenAiModel('gpt-5.2')),
       tools,
       memory: new Memory({
         storage: pStore,

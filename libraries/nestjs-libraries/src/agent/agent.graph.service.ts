@@ -6,6 +6,12 @@ import {
 } from '@langchain/core/messages';
 import { END, START, StateGraph } from '@langchain/langgraph';
 import { ChatOpenAI, DallEAPIWrapper } from '@langchain/openai';
+import {
+  getOpenAiApiKey,
+  getOpenAiBaseUrl,
+  getOpenAiImageModel,
+  getOpenAiModel,
+} from '@gitroom/nestjs-libraries/ai/openai.compatible';
 import { TavilySearch } from '@langchain/tavily';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
@@ -23,14 +29,16 @@ const tools = !process.env.TAVILY_API_KEY
 const toolNode = new ToolNode(tools);
 
 const model = new ChatOpenAI({
-  apiKey: process.env.OPENAI_API_KEY || 'sk-proj-',
-  model: 'gpt-4.1',
+  apiKey: getOpenAiApiKey(),
+  model: getOpenAiModel('gpt-4.1'),
   temperature: 0.7,
+  configuration: { baseURL: getOpenAiBaseUrl() },
 });
 
 const dalle = new DallEAPIWrapper({
-  apiKey: process.env.OPENAI_API_KEY || 'sk-proj-',
-  model: 'chatgpt-image-latest',
+  apiKey: getOpenAiApiKey(),
+  model: getOpenAiImageModel(),
+  baseUrl: getOpenAiBaseUrl(),
 });
 
 interface WorkflowChannelsState {

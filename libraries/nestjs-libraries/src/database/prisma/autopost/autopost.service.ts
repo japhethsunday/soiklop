@@ -7,6 +7,12 @@ import { AutoPost, Integration } from '@prisma/client';
 import { BaseMessage } from '@langchain/core/messages';
 import striptags from 'striptags';
 import { ChatOpenAI, DallEAPIWrapper } from '@langchain/openai';
+import {
+  getOpenAiApiKey,
+  getOpenAiBaseUrl,
+  getOpenAiImageModel,
+  getOpenAiModel,
+} from '@gitroom/nestjs-libraries/ai/openai.compatible';
 import { JSDOM } from 'jsdom';
 import { z } from 'zod';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
@@ -36,14 +42,16 @@ interface WorkflowChannelsState {
 }
 
 const model = new ChatOpenAI({
-  apiKey: process.env.OPENAI_API_KEY || 'sk-proj-',
-  model: 'gpt-4.1',
+  apiKey: getOpenAiApiKey(),
+  model: getOpenAiModel('gpt-4.1'),
   temperature: 0.7,
+  configuration: { baseURL: getOpenAiBaseUrl() },
 });
 
 const dalle = new DallEAPIWrapper({
-  apiKey: process.env.OPENAI_API_KEY || 'sk-proj-',
-  model: 'chatgpt-image-latest',
+  apiKey: getOpenAiApiKey(),
+  model: getOpenAiImageModel(),
+  baseUrl: getOpenAiBaseUrl(),
 });
 
 const generateContent = z.object({

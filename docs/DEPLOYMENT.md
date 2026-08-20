@@ -155,6 +155,42 @@ Social platform OAuth credentials and AI provider keys are documented in
 `.env.example`. Every platform integration stays inert until its credentials
 are supplied.
 
+## Configuring the AI provider
+
+Every AI feature -- the Agent chat, the post generator, autoposting, image
+generation -- speaks the OpenAI chat-completions protocol. The service
+answering it does not have to be OpenAI: NVIDIA NIM, OpenRouter, Together,
+Groq, Azure OpenAI and a self-hosted vLLM all serve the same protocol.
+
+Set these on **both** the `backend` and `orchestrator` services. The
+orchestrator runs `AutopostService`, which calls the provider too.
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `OPENAI_API_KEY` | yes | Without it every AI request is rejected with `503 ai_not_configured`. |
+| `OPENAI_BASE_URL` | only for non-OpenAI providers | The gateway's endpoint, e.g. `https://integrate.api.nvidia.com/v1`. Unset, requests go to OpenAI. |
+| `OPENAI_MODEL` | only for non-OpenAI providers | The chat model, e.g. `meta/muse-glimmer-30b`. Unset, the OpenAI model names are used and a non-OpenAI gateway will reject them as unknown. |
+| `OPENAI_IMAGE_MODEL` | optional | Image generation is a *separate* endpoint that most compatible gateways do not implement at all. |
+
+`OPENAI_BASE_URL` and `OPENAI_MODEL` travel together. Setting the key alone
+points a third-party key at OpenAI's servers, which rejects it -- and the error
+says the key is invalid rather than that the request went to the wrong host,
+which is a misleading place to start debugging.
+
+### What a compatible gateway may not support
+
+Being OpenAI-compatible for chat does not mean being compatible for
+everything the app asks for:
+
+- **Tool calling.** The Agent is built almost entirely out of tools -- listing
+  channels, scheduling posts, generating media. A model without function
+  calling will hold a conversation and do nothing.
+- **Image generation.** `OPENAI_IMAGE_MODEL` targets OpenAI's images endpoint.
+  Gateways that only serve chat completions return 404 for it.
+
+Neither is a configuration mistake to fix; both are limits of the chosen
+provider, and they fail at the point of use rather than silently.
+
 ## Connecting social channels
 
 **No channel can connect until its credentials are configured.** This is not a

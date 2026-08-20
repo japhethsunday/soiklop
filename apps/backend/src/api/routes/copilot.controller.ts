@@ -20,6 +20,13 @@ import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/s
 import { MastraAgent } from '@ag-ui/mastra';
 import { MastraService } from '@gitroom/nestjs-libraries/chat/mastra.service';
 import { Request, Response } from 'express';
+import OpenAI from 'openai';
+import {
+  getOpenAiApiKey,
+  getOpenAiBaseUrl,
+  getOpenAiModel,
+  isOpenAiConfigured,
+} from '@gitroom/nestjs-libraries/ai/openai.compatible';
 import { RequestContext } from '@mastra/core/di';
 import { CheckPolicies } from '@gitroom/backend/services/auth/permissions/permissions.ability';
 import { AuthorizationActions, Sections } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
@@ -38,7 +45,31 @@ export class CopilotController {
   ) {}
 
   private static isAiConfigured(): boolean {
-    return !!process.env.OPENAI_API_KEY;
+    return isOpenAiConfigured();
+  }
+
+  /**
+   * The adapter defaults to a client pointed at OpenAI's own endpoint, so it
+   * has to be given one built from configuration or a key issued by an
+   * OpenAI-compatible gateway is sent to the wrong host.
+   */
+  private static serviceAdapter() {
+    const client = new OpenAI({
+      apiKey: getOpenAiApiKey(),
+      baseURL: getOpenAiBaseUrl(),
+    });
+
+    return new OpenAIAdapter({
+      // @copilotkit/runtime bundles its own older `openai` typings, so a
+      // client built from the root package is rejected structurally even
+      // though it is the very client the adapter calls at runtime. The cast
+      // targets the adapter's own parameter type rather than `any`, so a
+      // genuine shape change would still be caught here.
+      openai: client as unknown as NonNullable<
+        ConstructorParameters<typeof OpenAIAdapter>[0]
+      >['openai'],
+      model: getOpenAiModel('gpt-4.1'),
+    });
   }
 
   /**
@@ -70,9 +101,7 @@ export class CopilotController {
     const copilotRuntimeHandler = copilotRuntimeNodeHttpEndpoint({
       endpoint: '/copilot/chat',
       runtime: new CopilotRuntime(),
-      serviceAdapter: new OpenAIAdapter({
-        model: 'gpt-4.1',
-      }),
+      serviceAdapter: CopilotController.serviceAdapter(),
     });
 
     return copilotRuntimeHandler(req, res);
@@ -112,9 +141,7 @@ export class CopilotController {
       endpoint: '/copilot/agent',
       runtime,
       // properties: req.body.variables.properties,
-      serviceAdapter: new OpenAIAdapter({
-        model: 'gpt-4.1',
-      }),
+      serviceAdapter: CopilotController.serviceAdapter(),
     });
 
     return copilotRuntimeHandler.handleRequest(req, res);
