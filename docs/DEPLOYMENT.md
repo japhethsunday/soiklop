@@ -206,7 +206,9 @@ quickest way to verify the connect flow end to end.
    publish**. Fix: upgrade the Railway plan and add a
    `temporalio/auto-setup:1.28.1` service pointed at `temporal-postgres`, or
    use Temporal Cloud and set `TEMPORAL_ADDRESS` accordingly.
-2. **`DATABASE_URL` is unset**, so the backend cannot reach Supabase yet.
+2. **No social platform credentials are configured**, so no channel can be
+   connected and the connect flow is untested. See "Connecting social
+   channels".
 
 ## Verification status
 
