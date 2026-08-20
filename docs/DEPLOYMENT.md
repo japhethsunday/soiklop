@@ -7,10 +7,15 @@ whole system.
 |---|---|---|
 | Database | Supabase (Postgres 17) | Managed Postgres, free tier |
 | Frontend (Next.js) | Vercel | CDN, preview deployments |
-| Backend (NestJS) | Railway | Needs a long-running HTTP process |
-| Orchestrator (Temporal worker) | Railway | Needs a persistent worker process |
-| Redis | Railway | Needs a persistent service |
-| Temporal server | Railway | Needs a persistent service |
+| Backend (NestJS) | Render | Needs a long-running HTTP process |
+| Orchestrator (Temporal worker) | Render | Needs a persistent worker process |
+| Redis | Render | Needs a persistent service |
+| Temporal server | Render | Needs gRPC on the private network |
+
+The backend stack moved off Railway because Railway's plan capped the project
+at four services and the fifth, the Temporal server, is the one that makes
+scheduled publishing work at all. `render.yaml` in the repository root declares
+the whole stack; see "Migrating to Render" below.
 
 ## Why the backend is not on Vercel
 
@@ -59,17 +64,88 @@ Rewrites declared in `vercel.json` do **not** apply to a Next.js app's own
 routing — they must be in `next.config.js`. `vercel.json` only supplies
 `BACKEND_PROXY_URL` and `NEXT_PUBLIC_BACKEND_URL` at build time.
 
-## Temporal is absent by design here
+## Temporal
 
 `TemporalRegister.onModuleInit` no longer aborts startup when Temporal is
 unreachable; it logs and continues. Without a Temporal service the API,
 authentication, dashboard and analytics all work, but **scheduling and
 publishing will fail** — loudly, at the point of use, never silently.
 
-Railway rejected a fifth service with "Free plan resource provision limit
-exceeded". To enable publishing, raise the plan and add a
-`temporalio/auto-setup:1.28.1` service pointed at `temporal-postgres`, or use
-Temporal Cloud and set `TEMPORAL_ADDRESS`.
+On Railway this was unfixable: the plan capped the project at four services and
+the Temporal server would have been the fifth. `render.yaml` provisions it as a
+private service, which is also the correct shape for it -- workers reach it over
+gRPC on port 7233, which is not HTTP, and nothing outside the private network
+should be able to reach it at all.
+
+## Migrating to Render
+
+`render.yaml` in the repository root declares the backend, the orchestrator,
+the Temporal server, Temporal's database and Redis. Everything is code except
+the secrets, which are marked `sync: false` so Render prompts for them and
+stores them encrypted rather than having them committed.
+
+Everything is placed in **frankfurt**, the Render region closest to the
+Supabase project in `eu-west-1`. The previous deployment ran in `us-west2`,
+which put a transatlantic round trip in front of every query.
+
+### What it costs
+
+Render has no free tier for private services, workers, or Postgres beyond a
+30-day trial, so activating this Blueprint starts a paid subscription. The
+plans are chosen from measured usage, not guessed:
+
+| Resource | Plan | Why |
+|---|---|---|
+| `soiklop-backend` | standard | Measured 0.60GB steady and 1.45GB peak over 24h on the previous host. A 512MB instance is killed under ordinary load. |
+| `soiklop-orchestrator` | starter | Measured 0.45GB peak -- but only ever idle, having never had a Temporal server to take work from. Raise to standard if it restarts once posts start publishing. |
+| `soiklop-temporal` | standard | Four Temporal services run inside the one auto-setup container. |
+| `soiklop-temporal-db` | basic-256mb | Cluster state only, not application data. |
+| `soiklop-redis` | free | 25MB is ample for cache and pub/sub here. |
+
+To trade reliability for cost, lower `plan:` on the backend first and watch for
+out-of-memory restarts. Do not lower `soiklop-temporal-db` below a paid plan:
+free Postgres expires after 30 days, and losing it destroys every scheduled
+workflow.
+
+### Steps
+
+1. Render Dashboard -> **New** -> **Blueprint** -> select this repository. It
+   reads `render.yaml` and shows what it will create.
+2. Supply the two prompted secrets. Both must be **copied from the current
+   Railway backend service** rather than invented:
+   - `DATABASE_URL` -- the Supabase connection string.
+   - `JWT_SECRET` -- changing this value invalidates every existing session,
+     signing out every user.
+3. Wait for `soiklop-temporal` to become live before judging the others. On
+   first boot it applies the Temporal schema to an empty database; the backend
+   and orchestrator log connection errors until it is up, which is expected and
+   not a fault in them.
+4. Confirm the backend is healthy: `GET https://soiklop-backend.onrender.com/monitor/queue/health`
+   returns HTTP 200.
+5. **Cut the frontend over.** In `apps/frontend/vercel.json`, change
+   `BACKEND_PROXY_URL` and `BACKEND_INTERNAL_URL` from the Railway hostname to
+   `https://soiklop-backend.onrender.com`, then push. This is the switch: until
+   it happens the frontend still talks to Railway, so do it only once step 4
+   passes. Keeping both stacks running through the cutover means a failure at
+   this point is a one-line revert rather than an outage.
+6. Verify a real scheduled post publishes end to end -- this is the thing the
+   whole migration exists to enable, and it has never yet been exercised.
+7. Only then delete the Railway project.
+
+### Temporal on managed Postgres
+
+Two details in `render.yaml` are not the defaults and both are load-bearing.
+
+Render provisions exactly one database per instance and its role cannot
+`CREATE DATABASE`. `temporalio/auto-setup` normally creates `temporal` and
+`temporal_visibility` itself, which would fail. Instead `DBNAME` and
+`VISIBILITY_DBNAME` both point at the single provisioned database and
+`SKIP_DB_CREATE=true` stops the attempt; the two schemas share one database,
+which is safe because their table names do not overlap.
+
+`NUM_HISTORY_SHARDS` is fixed permanently when the cluster is first created.
+Changing it later requires a new cluster, so it cannot be tuned in response to
+load.
 
 ## Vercel framework preset (do not remove)
 
@@ -199,14 +275,14 @@ quickest way to verify the connect flow end to end.
 
 ## Known blockers
 
-1. **Temporal server is not provisioned.** Railway's free plan caps the project
-   at four services (redis, backend, orchestrator, temporal-postgres). The
-   Temporal server itself could not be created. Until it exists, the
-   orchestrator has nothing to connect to and **no scheduled post will
-   publish**. Fix: upgrade the Railway plan and add a
-   `temporalio/auto-setup:1.28.1` service pointed at `temporal-postgres`, or
-   use Temporal Cloud and set `TEMPORAL_ADDRESS` accordingly.
-2. **`DATABASE_URL` is unset**, so the backend cannot reach Supabase yet.
+1. **Temporal server is not running yet.** The stack still serving traffic is
+   the Railway one, which has no Temporal service, so the orchestrator has
+   nothing to connect to and **no scheduled post will publish**. `render.yaml`
+   fixes this, but a Blueprint cannot be activated through the API -- it needs
+   one action in the Render dashboard, and it starts a paid subscription. See
+   "Migrating to Render".
+2. **No social platform credentials are configured**, so no channel can be
+   connected. See "Connecting social channels".
 
 ## Verification status
 
@@ -216,9 +292,11 @@ quickest way to verify the connect flow end to end.
 | Supabase security advisor, ERROR level | 0 findings |
 | Vercel frontend production build | Pass — deployed, READY |
 | Vercel frontend actually serving | Pass — `/` and `/auth/login` both return HTTP 200 and render |
-| Railway redis, temporal-postgres | Running |
+| Railway redis, temporal-postgres | Running — still the live stack until the cutover |
 | Railway backend | Running — "Backend started successfully on port 3000" |
-| Railway orchestrator | Running |
+| Railway orchestrator | Running — idle, no Temporal server to poll |
+| `render.yaml` schema | Parses; service and database plans as tabulated above |
+| Render stack actually running | **Not verified** — the Blueprint has not been activated |
 | API through the same-origin proxy | Pass — `GET /api/auth/can-register` returns HTTP 200 `{"register":true}` |
 | Frontend points at the proxy | Pass — bundle contains `backendUrl:"https://soiklop-japheth-sunday.vercel.app/api"` |
 | Login POST round trip | **Not verified from here** — the sandbox cannot issue POSTs to the deployment; needs a real browser sign-in |

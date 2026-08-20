@@ -1,0 +1,212 @@
+# Render Blueprint for the Soiklop platform.
+#
+# Declares every runtime component except the frontend, which stays on Vercel:
+#
+#   soiklop-backend       the API (public)
+#   soiklop-orchestrator  the Temporal worker that runs the publishing workflows
+#   soiklop-temporal      the Temporal server, reachable only on the private network
+#   soiklop-temporal-db   Temporal's own state; deliberately NOT the app database
+#   soiklop-redis         cache and pub/sub
+#
+# The application's own data stays in Supabase, so DATABASE_URL is supplied
+# rather than declared here.
+#
+# Secrets are marked `sync: false`: Render prompts for them when the Blueprint
+# is created and stores them encrypted, so no credential is committed.
+#
+# Activate with: Render Dashboard -> New -> Blueprint -> pick this repo.
+
+databases:
+  # Temporal keeps its own cluster state -- mutable workflow state, task
+  # queues, timers -- and writes to it constantly. It is kept apart from the
+  # application database so that its connection churn cannot exhaust the
+  # pooler that authentication and the dashboard depend on, which is a failure
+  # this deployment has already hit once.
+  - name: soiklop-temporal-db
+    plan: basic-256mb
+    region: frankfurt
+    postgresMajorVersion: "16"
+
+services:
+  - type: keyvalue
+    name: soiklop-redis
+    plan: free
+    region: frankfurt
+    # Reachable only from services on the private network.
+    ipAllowList: []
+    # Cache entries must not be silently evicted while a publish is in flight.
+    maxmemoryPolicy: noeviction
+
+  # Temporal server. A private service rather than a web service: the workers
+  # talk to it over gRPC on 7233, which is not HTTP, and nothing outside the
+  # private network has any reason to reach it.
+  - type: pserv
+    name: soiklop-temporal
+    runtime: image
+    plan: standard
+    region: frankfurt
+    image:
+      url: docker.io/temporalio/auto-setup:1.28.1
+    envVars:
+      - key: DB
+        value: postgres12
+      - key: POSTGRES_SEEDS
+        fromDatabase:
+          name: soiklop-temporal-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: soiklop-temporal-db
+          property: port
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: soiklop-temporal-db
+          property: user
+      - key: POSTGRES_PWD
+        fromDatabase:
+          name: soiklop-temporal-db
+          property: password
+      # Render provisions exactly one database and its role cannot create
+      # more, so the cluster and visibility schemas share it. Their table
+      # names do not overlap, and SKIP_DB_CREATE stops auto-setup from trying
+      # a CREATE DATABASE it is not permitted to run.
+      - key: DBNAME
+        fromDatabase:
+          name: soiklop-temporal-db
+          property: database
+      - key: VISIBILITY_DBNAME
+        fromDatabase:
+          name: soiklop-temporal-db
+          property: database
+      - key: SKIP_DB_CREATE
+        value: "true"
+      - key: POSTGRES_TLS_ENABLED
+        value: "true"
+      - key: POSTGRES_TLS_DISABLE_HOST_VERIFICATION
+        value: "true"
+      # Standard visibility on Postgres. Elasticsearch would be a sixth
+      # component to run and pay for, and it only adds richer list filters.
+      - key: ENABLE_ES
+        value: "false"
+      # Fixed at cluster creation and unchangeable afterwards. Four shards
+      # suit a single-worker deployment; raising it later means a new cluster.
+      - key: NUM_HISTORY_SHARDS
+        value: "4"
+      # Four Temporal services share this container, so the connection budget
+      # is per-service. Left at the default they would together exceed what a
+      # 256MB Postgres allows.
+      - key: SQL_MAX_CONNS
+        value: "8"
+      - key: SQL_MAX_IDLE_CONNS
+        value: "4"
+      - key: TEMPORAL_ADDRESS
+        value: soiklop-temporal:7233
+      - key: TEMPORAL_CLI_ADDRESS
+        value: soiklop-temporal:7233
+
+  - type: web
+    name: soiklop-backend
+    runtime: node
+    # Measured on the previous host: 0.60GB steady, 1.45GB peak over 24h.
+    # A 512MB instance would be killed under ordinary load.
+    plan: standard
+    region: frankfurt
+    branch: claude/social-media-platform-utwt5m
+    buildCommand: pnpm install --frozen-lockfile && pnpm run build:backend
+    startCommand: pnpm run start:prod:backend
+    # Unauthenticated and side-effect free, so it reports process health
+    # without depending on the database or on Temporal being up.
+    healthCheckPath: /monitor/queue/health
+    envVars:
+      # package.json requires >=22.12 <23. Render's default runtime version is
+      # not guaranteed to satisfy that, and an unpinned mismatch fails the
+      # install rather than the build, which reads as an unrelated error.
+      - key: NODE_VERSION
+        value: "22.22.2"
+      - key: NODE_ENV
+        value: production
+      # Headroom for the build, which is the memory-hungry step; the default
+      # heap limit is derived from the container and is lower than the peak
+      # measured above.
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=3072
+      - key: IS_GENERAL
+        value: "true"
+      - key: STORAGE_PROVIDER
+        value: local
+      - key: API_LIMIT
+        value: "30"
+      - key: TEMPORAL_ADDRESS
+        value: soiklop-temporal:7233
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: soiklop-redis
+          property: connectionString
+      # The application database in Supabase, and the signing key for auth
+      # cookies. JWT_SECRET must be carried over from the current deployment
+      # unchanged, or every existing session is invalidated.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      # All three are the public frontend origin: the browser reaches the API
+      # through a same-origin proxy there, so this is the origin used for
+      # CORS, for the auth cookie, and in OAuth redirect URIs.
+      - key: FRONTEND_URL
+        value: https://soiklop.vercel.app
+      - key: MAIN_URL
+        value: https://soiklop.vercel.app
+      - key: NEXT_PUBLIC_BACKEND_URL
+        value: https://soiklop.vercel.app/api
+      # Render derives the hostname from the service name, so this is known
+      # before the first deploy.
+      - key: BACKEND_INTERNAL_URL
+        value: https://soiklop-backend.onrender.com
+
+  # A worker, not a web service: it exists to poll Temporal task queues. It
+  # does bind a health-check port, but nothing needs to reach it.
+  - type: worker
+    name: soiklop-orchestrator
+    runtime: node
+    # Measured 0.45GB peak, but only ever idle -- it has never had a Temporal
+    # server to take work from. Watch this once posts start publishing.
+    plan: starter
+    region: frankfurt
+    branch: claude/social-media-platform-utwt5m
+    buildCommand: pnpm install --frozen-lockfile && pnpm run build:orchestrator
+    startCommand: pnpm run start:prod:orchestrator
+    envVars:
+      # package.json requires >=22.12 <23. Render's default runtime version is
+      # not guaranteed to satisfy that, and an unpinned mismatch fails the
+      # install rather than the build, which reads as an unrelated error.
+      - key: NODE_VERSION
+        value: "22.22.2"
+      - key: NODE_ENV
+        value: production
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=1536
+      - key: IS_GENERAL
+        value: "true"
+      - key: STORAGE_PROVIDER
+        value: local
+      - key: TEMPORAL_ADDRESS
+        value: soiklop-temporal:7233
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: soiklop-redis
+          property: connectionString
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        value: https://soiklop.vercel.app
+      - key: NEXT_PUBLIC_BACKEND_URL
+        value: https://soiklop.vercel.app/api
+      - key: BACKEND_INTERNAL_URL
+        fromService:
+          type: web
+          name: soiklop-backend
+          property: url
