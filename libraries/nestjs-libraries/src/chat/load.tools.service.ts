@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Agent } from '@mastra/core/agent';
 import { createOpenAI } from '@ai-sdk/openai';
 import {
+  createOpenAiFetch,
   getOpenAiApiKey,
   getOpenAiBaseUrl,
   getOpenAiModel,
@@ -22,6 +23,7 @@ import {
 const openai = createOpenAI({
   apiKey: getOpenAiApiKey(),
   baseURL: getOpenAiBaseUrl(),
+  fetch: createOpenAiFetch(),
 });
 import { Memory } from '@mastra/memory';
 import { pStore } from '@gitroom/nestjs-libraries/chat/mastra.store';

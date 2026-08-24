@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import {
+  createOpenAiFetch,
   getOpenAiApiKey,
   getOpenAiBaseUrl,
   getOpenAiImageModel,
@@ -13,6 +14,7 @@ import { z } from 'zod';
 const openai = new OpenAI({
   apiKey: getOpenAiApiKey(),
   baseURL: getOpenAiBaseUrl(),
+  fetch: createOpenAiFetch(),
 });
 
 const PicturePrompt = z.object({

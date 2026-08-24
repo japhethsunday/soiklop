@@ -44,3 +44,67 @@ export const getOpenAiImageModel = (): string =>
 
 /** Whether an AI provider is configured at all. */
 export const isOpenAiConfigured = (): boolean => !!getOpenAiApiKey();
+
+/**
+ * Extra JSON merged into every chat-completions request body.
+ *
+ * Gateways accept provider-specific parameters that the OpenAI schema has no
+ * field for, and the SDKs drop anything they do not recognise. The one that
+ * matters here is reasoning: a thinking model spends its token budget on a
+ * reasoning stream returned outside `content`, so a caller that reads only
+ * `content` gets an empty reply after a long wait -- which reads as "the AI
+ * produced nothing" rather than as a parameter that needs setting.
+ *
+ * Kept as opaque JSON rather than named options so a gateway's parameters can
+ * be set without teaching this codebase about any particular vendor. Example:
+ *
+ *   OPENAI_EXTRA_BODY={"chat_template_kwargs":{"thinking":false}}
+ */
+export const getOpenAiExtraBody = (): Record<string, unknown> | undefined => {
+  const raw = process.env.OPENAI_EXTRA_BODY?.trim();
+  if (!raw) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : undefined;
+  } catch {
+    // Malformed configuration must not take down every AI request; the
+    // request is still worth making without the extra parameters.
+    return undefined;
+  }
+};
+
+/**
+ * A `fetch` that merges `OPENAI_EXTRA_BODY` into outgoing JSON request bodies.
+ *
+ * Both SDKs used here accept a `fetch` override but neither exposes a general
+ * passthrough for unknown body parameters, so this is the one seam where a
+ * gateway's own options can be applied to every call site at once. Returns the
+ * global fetch unchanged when nothing is configured, so the default path is
+ * untouched.
+ */
+export const createOpenAiFetch = (): typeof fetch | undefined => {
+  const extraBody = getOpenAiExtraBody();
+  if (!extraBody) {
+    return undefined;
+  }
+
+  return async (input: any, init?: any) => {
+    if (typeof init?.body !== 'string') {
+      return fetch(input, init);
+    }
+
+    try {
+      const body = JSON.parse(init.body);
+      // Caller-supplied values win, so an explicit parameter is never
+      // silently overridden by configuration.
+      init = { ...init, body: JSON.stringify({ ...extraBody, ...body }) };
+    } catch {
+      // Not JSON (a file upload, say) -- pass it through untouched.
+    }
+
+    return fetch(input, init);
+  };
+};

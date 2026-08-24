@@ -22,6 +22,7 @@ import { MastraService } from '@gitroom/nestjs-libraries/chat/mastra.service';
 import { Request, Response } from 'express';
 import OpenAI from 'openai';
 import {
+  createOpenAiFetch,
   getOpenAiApiKey,
   getOpenAiBaseUrl,
   getOpenAiModel,
@@ -57,6 +58,7 @@ export class CopilotController {
     const client = new OpenAI({
       apiKey: getOpenAiApiKey(),
       baseURL: getOpenAiBaseUrl(),
+      fetch: createOpenAiFetch(),
     });
 
     return new OpenAIAdapter({
