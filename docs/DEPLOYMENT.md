@@ -11,6 +11,7 @@ whole system.
 | Orchestrator (Temporal worker) | Railway | Needs a persistent worker process |
 | Redis | Railway | Needs a persistent service |
 | Temporal server | Railway | Needs a persistent service |
+| Temporal Postgres | Railway | Temporal's own cluster state, kept off the app database |
 
 ## Why the backend is not on Vercel
 
@@ -59,17 +60,40 @@ Rewrites declared in `vercel.json` do **not** apply to a Next.js app's own
 routing — they must be in `next.config.js`. `vercel.json` only supplies
 `BACKEND_PROXY_URL` and `NEXT_PUBLIC_BACKEND_URL` at build time.
 
-## Temporal is absent by design here
+## Temporal
 
 `TemporalRegister.onModuleInit` no longer aborts startup when Temporal is
 unreachable; it logs and continues. Without a Temporal service the API,
 authentication, dashboard and analytics all work, but **scheduling and
 publishing will fail** — loudly, at the point of use, never silently.
 
-Railway rejected a fifth service with "Free plan resource provision limit
-exceeded". To enable publishing, raise the plan and add a
-`temporalio/auto-setup:1.28.1` service pointed at `temporal-postgres`, or use
-Temporal Cloud and set `TEMPORAL_ADDRESS`.
+Temporal now runs as the `temporal` service
+(`temporalio/auto-setup:1.28.1`) against `temporal-postgres`. Two settings are
+not the defaults and both are load-bearing:
+
+- **`BIND_ON_IP=::0`**, not `::`. Railway's private network is IPv6, so
+  Temporal has to listen on IPv6 to be reachable at all -- but the image's
+  entrypoint only derives `TEMPORAL_BROADCAST_ADDRESS` when `BIND_ON_IP`
+  is exactly `0.0.0.0` or `::0`. With `::` the broadcast address stays empty
+  and the server refuses to start:
+  `broadcastAddress required when listening on all interfaces`.
+- **`ENABLE_ES=false`**, so visibility is served from Postgres. Elasticsearch
+  would be a sixth component to run and pay for and only adds richer list
+  filters. The cost is a cap of three custom TEXT search attributes -- see
+  below.
+
+`NUM_HISTORY_SHARDS=4` is fixed permanently when the cluster is first created;
+changing it later means a new cluster, so it cannot be tuned under load.
+
+### Search attributes must be keywords
+
+`TemporalRegister` registers `organizationId` and `postId`. They are
+registered as KEYWORD, not TEXT. Standard SQL visibility permits at most three
+custom TEXT attributes, so registering them as TEXT fails outright with
+`cannot have more than 3 search attribute of type Text`. KEYWORD is also the
+correct type on its own terms: these are identifiers looked up by exact value,
+and TEXT is tokenised for full-text search, so an id query would not match
+reliably.
 
 ## Vercel framework preset (do not remove)
 
@@ -235,16 +259,10 @@ quickest way to verify the connect flow end to end.
 
 ## Known blockers
 
-1. **Temporal server is not provisioned.** Railway's free plan caps the project
-   at four services (redis, backend, orchestrator, temporal-postgres). The
-   Temporal server itself could not be created. Until it exists, the
-   orchestrator has nothing to connect to and **no scheduled post will
-   publish**. Fix: upgrade the Railway plan and add a
-   `temporalio/auto-setup:1.28.1` service pointed at `temporal-postgres`, or
-   use Temporal Cloud and set `TEMPORAL_ADDRESS` accordingly.
-2. **No social platform credentials are configured**, so no channel can be
-   connected and the connect flow is untested. See "Connecting social
-   channels".
+1. **No social platform credentials are configured**, so no channel can be
+   connected and the publishing pipeline has never been exercised against a
+   real destination. See "Connecting social channels". Bluesky needs no
+   developer application and is the quickest way to test it.
 
 ## Verification status
 
@@ -255,19 +273,27 @@ quickest way to verify the connect flow end to end.
 | Vercel frontend production build | Pass — deployed, READY |
 | Vercel frontend actually serving | Pass — `/` and `/auth/login` both return HTTP 200 and render |
 | Railway redis, temporal-postgres | Running |
+| Railway temporal | Running — "Temporal server started."; `default` namespace created |
 | Railway backend | Running — "Backend started successfully on port 3000" |
-| Railway orchestrator | Running |
+| Railway orchestrator | Running — workers RUNNING on the per-platform task queues |
+| Temporal search attributes registered | Pass — registration returns no error since they became KEYWORD |
+| Mastra pool bounded | Pass — 6 connections steady, against a ceiling of 15; previously saturated |
 | API through the same-origin proxy | Pass — `GET /api/auth/can-register` returns HTTP 200 `{"register":true}` |
 | Frontend points at the proxy | Pass — bundle contains `backendUrl:"https://soiklop-japheth-sunday.vercel.app/api"` |
 | Login POST round trip | **Not verified from here** — the sandbox cannot issue POSTs to the deployment; needs a real browser sign-in |
-| End-to-end publish flow | **Not verified** — blocked on Temporal (see above) |
+| End-to-end publish flow | **Not verified** — Temporal and its worker are now running, but no channel is connected, so nothing has actually been published |
+| AI provider round trip | **Not verified** — configured against an OpenAI-compatible gateway; no successful call observed yet |
 
 ### Database connection
 
-Use the **transaction** pooler on port 6543. Session mode (5432) caps the
-project at 15 client connections, and the backend and orchestrator each open a
-Prisma pool plus Mastra's own pool, which exhausts it and produces
-`EMAXCONNSESSION`.
+The deployment runs in **session** mode, which caps the project at 15 client
+connections. That budget is shared by the backend and the orchestrator, each
+holding a Prisma pool plus Mastra's own pool, and it has been exhausted in
+practice -- producing `EMAXCONNSESSION` and crash-looping the API at startup.
+
+Mastra's pool is therefore capped explicitly (see `mastra.store.ts`); left at
+`pg.Pool`'s default of 10 it alone took two thirds of the budget. Anything else
+added against this database has to be counted against the same 15.
 
 The application connects as the `soiklop_app` role, not `postgres`. It owns
 every object in `public` because Mastra and Prisma both ALTER their own tables
