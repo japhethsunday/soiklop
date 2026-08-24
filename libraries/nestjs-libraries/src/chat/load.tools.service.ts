@@ -11,6 +11,13 @@ import {
  * Built here rather than using the package's default `openai` singleton,
  * which is bound to OpenAI's own endpoint and so ignores a key issued by an
  * OpenAI-compatible gateway.
+ *
+ * Models are taken from `.chat()` rather than by calling the provider
+ * directly. Called directly it returns a Responses API model, which posts to
+ * `/v1/responses` -- an endpoint only OpenAI itself serves. Compatible
+ * gateways implement `/v1/chat/completions` and nothing else, so the default
+ * fails there with a bare `404 page not found` that names no model and no
+ * endpoint, and reads like a bad model id rather than a wrong API.
  */
 const openai = createOpenAI({
   apiKey: getOpenAiApiKey(),
@@ -108,7 +115,7 @@ export class LoadToolsService {
       )}
 `;
       },
-      model: openai(getOpenAiModel('gpt-5.2')),
+      model: openai.chat(getOpenAiModel('gpt-5.2')),
       tools,
       memory: new Memory({
         storage: pStore,
