@@ -41,6 +41,18 @@ export class TemporalRegister implements OnModuleInit {
     }
   }
 
+  /**
+   * `IndexedValueType` from Temporal's API. Declared here rather than imported
+   * from `@temporalio/proto`, which is only a transitive dependency and so is
+   * not guaranteed to be resolvable under pnpm's strict layout.
+   *
+   * KEYWORD is matched exactly; TEXT is tokenised for full-text search. These
+   * attributes hold identifiers that are only ever looked up by exact value,
+   * so KEYWORD is both the correct type and the queryable one -- a TEXT
+   * attribute would not match an id reliably.
+   */
+  private static readonly INDEXED_VALUE_TYPE_KEYWORD = 2;
+
   private async registerSearchAttributes(): Promise<void> {
     const connection = this._client?.client?.getRawClient()
       ?.connection as Connection;
@@ -58,11 +70,13 @@ export class TemporalRegister implements OnModuleInit {
     if (missingAttributes.length > 0) {
       await connection.operatorService.addSearchAttributes({
         namespace: process.env.TEMPORAL_NAMESPACE || 'default',
-        searchAttributes: missingAttributes.reduce((all, current) => {
-          // @ts-ignore
-          all[current] = 1;
-          return all;
-        }, {}),
+        searchAttributes: missingAttributes.reduce(
+          (all, current) => {
+            all[current] = TemporalRegister.INDEXED_VALUE_TYPE_KEYWORD;
+            return all;
+          },
+          {} as Record<string, number>
+        ),
       });
     }
   }
